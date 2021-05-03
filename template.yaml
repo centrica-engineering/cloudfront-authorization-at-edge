@@ -26,8 +26,8 @@ Metadata:
         "vue",
         "amplify",
       ]
-    HomePageUrl: https://github.com/aws-samples/cloudfront-authorization-at-edge
-    SemanticVersion: 2.0.4
+    HomePageUrl: https://github.com/centrica-engineering
+    SemanticVersion: 2.0.5-alpha
     SourceCodeUrl: https://github.com/centrica-engineering/cloudfront-authorization-at-edge
 
 Parameters:
