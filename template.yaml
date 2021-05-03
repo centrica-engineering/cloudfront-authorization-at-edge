@@ -1,5 +1,7 @@
 # Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
+# sam package --template-file template.yaml --output-template-file packaged.yaml --s3-bucket cloudfront-authorization-at-edge-centrica --profile "otp-prod"
+# sam publish --template packaged.yaml --region eu-west-2 --profile "otp-prod"
 
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
@@ -226,13 +228,14 @@ Resources:
   DefaultPermissionBoundaryPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
+      Description: "non-restrictive default permission boundary, used only if no separate PermissionBoundaryPolicyArn is used"
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Action: '*'
             Resource: '*'
-      PolicyName: DefaultPermissionBoundaryPolicy
+      ManagedPolicyName: DefaultPermissionBoundaryPolicy
   LambdaEdgeExecutionRole:
     Type: AWS::IAM::Role
     Properties:
