@@ -27,7 +27,7 @@ Metadata:
         "amplify",
       ]
     HomePageUrl: https://github.com/centrica-engineering
-    SemanticVersion: 2.0.5-alpha
+    SemanticVersion: 2.0.5-alpha1
     SourceCodeUrl: https://github.com/centrica-engineering/cloudfront-authorization-at-edge
 
 Parameters:
@@ -224,7 +224,7 @@ Resources:
       Timeout: 5
 
   DefaultPermissionBoundaryPolicy:
-    Type: AWS::IAM::Policy
+    Type: AWS::IAM::ManagedPolicy
     Properties:
       PolicyDocument:
         Version: "2012-10-17"
