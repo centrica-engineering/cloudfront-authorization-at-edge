@@ -30,7 +30,7 @@ Metadata:
         "amplify",
       ]
     HomePageUrl: https://github.com/centrica-engineering
-    SemanticVersion: 2.0.5-alpha8
+    SemanticVersion: 2.0.5-alpha10
     SourceCodeUrl: https://github.com/centrica-engineering/cloudfront-authorization-at-edge
 
 Parameters:
@@ -180,7 +180,7 @@ Resources:
     Type: AWS::S3::Bucket
     Condition: CreateCloudFrontDistribution
     Properties:
-      AccessControl: Public
+      AccessControl: PublicRead
 
   CheckAuthHandler:
     Type: AWS::Serverless::Function
@@ -997,8 +997,8 @@ Outputs:
     Description: The S3 Bucket where the SPA (React, Angular, Vue, ...) is uploaded to
     Condition: CreateCloudFrontDistribution
     Value: !Ref S3Bucket
-    Export:
-      Name: !Sub "${AWS::StackName}-S3Bucket"
+    #Export:
+      #Name: !Sub "${AWS::StackName}-S3Bucket"
   WebsiteUrl:
     Description: URL of the CloudFront distribution that serves your SPA from S3
     Condition: CreateCloudFrontDistribution
