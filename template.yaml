@@ -1,5 +1,6 @@
 # Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
+# aws-adfs login --profile="otp-prod"
 # sam package --template-file template.yaml --output-template-file packaged.yaml --s3-bucket cloudfront-authorization-at-edge-centrica --profile "otp-prod"
 # sam publish --template packaged.yaml --region eu-west-2 --profile "otp-prod"
 
@@ -29,7 +30,7 @@ Metadata:
         "amplify",
       ]
     HomePageUrl: https://github.com/centrica-engineering
-    SemanticVersion: 2.0.5-alpha1
+    SemanticVersion: 2.0.5-alpha7
     SourceCodeUrl: https://github.com/centrica-engineering/cloudfront-authorization-at-edge
 
 Parameters:
@@ -139,11 +140,12 @@ Parameters:
       - "error"
       - "debug"
   PermissionBoundaryPolicyArn:
-    Description: ARN to a boundary policy if your organisation uses some for roles, optional
+    Description: ARN to a boundary policy if your organisation uses some for roles, optional. TODO find a way around not being able to pass dynamic values DefaultPermissionBoundaryPolicy.Arn
     Type: String
-    Default: DefaultPermissionBoundaryPolicy
+    Default: "true"
 
 Conditions:
+  CreateDefaultBoundaryPolicy: !Equals [!Ref PermissionBoundaryPolicyArn, "true"]
   CreateUser: !And
     - !Not [!Equals [!Ref EmailAddress, ""]]
     - !Equals [!Ref UserPoolArn, ""]
@@ -227,6 +229,7 @@ Resources:
 
   DefaultPermissionBoundaryPolicy:
     Type: AWS::IAM::ManagedPolicy
+    Condition: CreateDefaultBoundaryPolicy
     Properties:
       Description: "non-restrictive default permission boundary, used only if no separate PermissionBoundaryPolicyArn is used"
       PolicyDocument:
@@ -419,22 +422,45 @@ Resources:
         - !GetAtt UserPool.Arn
         - !Ref UserPoolArn
 
+  UserPoolDomainLookupHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Sub: 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      PermissionsBoundary: !Ref PermissionBoundaryPolicyArn
+  UserPoolDomainLookupHandlerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - cognito-idp:DescribeUserPool
+            Resource: !If
+              - CreateUserPoolAndClient
+              - !GetAtt UserPool.Arn
+              - !Ref UserPoolArn
+      PolicyName: UserPoolDomainLookupHandlerPolicy
+      Roles:
+        - Ref: UserPoolDomainLookupHandlerRole
   UserPoolDomainLookupHandler:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/cfn-custom-resources/user-pool-domain/
       Handler: index.handler
       Runtime: nodejs12.x
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - cognito-idp:DescribeUserPool
-              Resource: !If
-                - CreateUserPoolAndClient
-                - !GetAtt UserPool.Arn
-                - !Ref UserPoolArn
+      Role: !Ref UserPoolDomainLookupHandlerRole
+    DependsOn:
+      - UserPoolDomainLookupHandlerRole
+      - UserPoolDomainLookupHandlerPolicy
 
   UserPoolClientUpdate:
     Type: Custom::UserPoolClientUpdate
@@ -458,20 +484,43 @@ Resources:
       AlternateDomainNames: !Ref AlternateDomainNames
       OAuthScopes: !Ref OAuthScopes
 
+  UserPoolClientUpdateHandlerServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Sub: 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      PermissionsBoundary: !Ref PermissionBoundaryPolicyArn
+  UserPoolClientUpdateHandlerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - cognito-idp:UpdateUserPoolClient
+              - cognito-idp:DescribeUserPoolClient
+            Resource: "*"  # * to be able to clean up after myself, if you change the User Pool Client ID
+      PolicyName: UserPoolClientUpdateHandlerPolicy
+      Roles:
+        - Ref: UserPoolClientUpdateHandlerServiceRole
   UserPoolClientUpdateHandler:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/cfn-custom-resources/user-pool-client/
       Handler: index.handler
       Runtime: nodejs12.x
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - cognito-idp:UpdateUserPoolClient
-                - cognito-idp:DescribeUserPoolClient
-              Resource: "*"  # * to be able to clean up after myself, if you change the User Pool Client ID
+      Role: !GetAtt UserPoolClientUpdateHandlerServiceRole.Arn
+    DependsOn:
+      - UserPoolClientUpdateHandlerServiceRole
+      - UserPoolClientUpdateHandlerPolicy
 
   ClientSecretRetrieval:
     Type: Custom::ClientSecretRetrieval
@@ -487,6 +536,35 @@ Resources:
         - !Ref UserPoolClient
         - !Ref UserPoolClientId
 
+  ClientSecretRetrievalHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Sub: 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      PermissionsBoundary: !Ref PermissionBoundaryPolicyArn
+  ClientSecretRetrievalHandlerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - cognito-idp:DescribeUserPoolClient
+            Resource: !If
+              - CreateUserPoolAndClient
+              - !GetAtt UserPool.Arn
+              - !Ref UserPoolArn
+      PolicyName: ClientSecretRetrievalHandlerPolicy
+      Roles:
+        - Ref: ClientSecretRetrievalHandlerRole
   ClientSecretRetrievalHandler:
     Type: AWS::Serverless::Function
     Condition: StaticSiteMode
@@ -494,16 +572,10 @@ Resources:
       CodeUri: src/cfn-custom-resources/client-secret-retrieval/
       Handler: index.handler
       Runtime: nodejs12.x
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - cognito-idp:DescribeUserPoolClient
-              Resource: !If
-                - CreateUserPoolAndClient
-                - !GetAtt UserPool.Arn
-                - !Ref UserPoolArn
+      Role: !GetAtt ClientSecretRetrievalHandlerRole.Arn
+    DependsOn:
+      - ClientSecretRetrievalHandlerRole
+      - ClientSecretRetrievalHandlerPolicy
 
   StaticSite:
     Type: Custom::StaticSite
@@ -512,6 +584,40 @@ Resources:
       ServiceToken: !GetAtt StaticSiteHandler.Arn
       BucketName: !Ref S3Bucket
 
+  StaticSiteHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Sub: 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      PermissionsBoundary: !Ref PermissionBoundaryPolicyArn
+  StaticSiteHandlerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !GetAtt S3Bucket.Arn
+          - Effect: Allow
+            Action:
+              - s3:DeleteObject
+              - s3:PutObject
+            Resource:
+              - !GetAtt S3Bucket.Arn
+              - !Join ["/", [!GetAtt S3Bucket.Arn, "*"]]
+      PolicyName: StaticSiteHandlerPolicy
+      Roles:
+        - Ref: StaticSiteHandlerRole
   StaticSiteHandler:
     Type: AWS::Serverless::Function
     Condition: CreateCloudFrontDistributionStaticSiteMode
@@ -521,21 +627,10 @@ Resources:
       Runtime: nodejs12.x
       Timeout: 180
       MemorySize: 2048
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - s3:ListBucket
-              Resource:
-                - !GetAtt S3Bucket.Arn
-            - Effect: Allow
-              Action:
-                - s3:DeleteObject
-                - s3:PutObject
-              Resource:
-                - !GetAtt S3Bucket.Arn
-                - !Join ["/", [!GetAtt S3Bucket.Arn, "*"]]
+      Role: !GetAtt StaticSiteHandlerRole.Arn
+    DependsOn:
+      - StaticSiteHandlerRole
+      - StaticSiteHandlerPolicy
 
   ReactApp:
     Type: Custom::ReactApp
@@ -559,6 +654,40 @@ Resources:
         - !Ref OAuthScopes
       SignOutUrl: !Ref SignOutUrl
 
+  ReactAppHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Sub: 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      PermissionsBoundary: !Ref PermissionBoundaryPolicyArn
+  ReactAppHandlerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !GetAtt S3Bucket.Arn
+          - Effect: Allow
+            Action:
+              - s3:DeleteObject
+              - s3:PutObject
+            Resource:
+              - !GetAtt S3Bucket.Arn
+              - !Join ["/", [!GetAtt S3Bucket.Arn, "*"]]
+      PolicyName: ReactAppHandlerPolicy
+      Roles:
+        - Ref: ReactAppHandlerRole
   ReactAppHandler:
     Type: AWS::Serverless::Function
     Condition: CreateCloudFrontDistributionSpaMode
@@ -568,21 +697,10 @@ Resources:
       Runtime: nodejs12.x
       Timeout: 300
       MemorySize: 3008
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - s3:ListBucket
-              Resource:
-                - !GetAtt S3Bucket.Arn
-            - Effect: Allow
-              Action:
-                - s3:DeleteObject
-                - s3:PutObject
-              Resource:
-                - !GetAtt S3Bucket.Arn
-                - !Join ["/", [!GetAtt S3Bucket.Arn, "*"]]
+      Role: !GetAtt ReactAppHandlerRole.Arn
+    DependsOn:
+      - ReactAppHandlerRole
+      - ReactAppHandlerPolicy
 
   ParseAuthHandlerCodeUpdate:
     Type: Custom::LambdaCodeUpdate
@@ -801,25 +919,48 @@ Resources:
                   - !Ref OAuthScopes
                 - '"]'
 
+  LambdaCodeUpdateHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Sub: 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      PermissionsBoundary: !Ref PermissionBoundaryPolicyArn
+  LambdaCodeUpdateHandlerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:GetFunction
+              - lambda:UpdateFunctionCode
+            Resource:
+              - !GetAtt ParseAuthHandler.Arn
+              - !GetAtt CheckAuthHandler.Arn
+              - !GetAtt HttpHeadersHandler.Arn
+              - !GetAtt RefreshAuthHandler.Arn
+              - !GetAtt SignOutHandler.Arn
+      PolicyName: LambdaCodeUpdateHandlerPolicy
+      Roles:
+        - Ref: LambdaCodeUpdateHandlerRole
   LambdaCodeUpdateHandler:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/cfn-custom-resources/lambda-code-update/
       Handler: index.handler
       Runtime: nodejs12.x
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - lambda:GetFunction
-                - lambda:UpdateFunctionCode
-              Resource:
-                - !GetAtt ParseAuthHandler.Arn
-                - !GetAtt CheckAuthHandler.Arn
-                - !GetAtt HttpHeadersHandler.Arn
-                - !GetAtt RefreshAuthHandler.Arn
-                - !GetAtt SignOutHandler.Arn
+      Role: !GetAtt LambdaCodeUpdateHandlerRole.Arn
+    DependsOn:
+      - LambdaCodeUpdateHandlerRole
+      - LambdaCodeUpdateHandlerPolicy
 
   NonceSigningSecret:
     Type: Custom::NonceSigningSecret
@@ -828,12 +969,28 @@ Resources:
       Length: 16
       Version: !Ref Version
 
+  RandomValueGeneratorServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Sub: 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      PermissionsBoundary: !Ref PermissionBoundaryPolicyArn
   RandomValueGenerator:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/cfn-custom-resources/generate-secret/
       Handler: index.handler
       Runtime: nodejs12.x
+      Role: !GetAtt RandomValueGeneratorServiceRole.Arn
+    DependsOn:
+      - RandomValueGeneratorServiceRole
 
 Outputs:
   S3Bucket:
