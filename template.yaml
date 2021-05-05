@@ -1,5 +1,9 @@
 # Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
+#
+# npm install
+# npm run build
+# sam build --use-container
 # aws-adfs login --profile="otp-prod"
 # sam package --template-file template.yaml --output-template-file packaged.yaml --s3-bucket cloudfront-authorization-at-edge-centrica --profile "otp-prod"
 # sam publish --template packaged.yaml --region eu-west-2 --profile "otp-prod"
@@ -30,7 +34,7 @@ Metadata:
         "amplify",
       ]
     HomePageUrl: https://github.com/centrica-engineering
-    SemanticVersion: 2.0.5-alpha10
+    SemanticVersion: 2.0.5-alpha17
     SourceCodeUrl: https://github.com/centrica-engineering/cloudfront-authorization-at-edge
 
 Parameters:
@@ -181,6 +185,9 @@ Resources:
     Condition: CreateCloudFrontDistribution
     Properties:
       AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: 404.html
 
   CheckAuthHandler:
     Type: AWS::Serverless::Function
@@ -346,6 +353,8 @@ Resources:
             Resource: !GetAtt S3Bucket.Arn
             Principal:
               CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+    DependsOn:
+      - CloudFrontOriginAccessIdentity
 
   UserPool:
     Type: AWS::Cognito::UserPool
@@ -457,7 +466,7 @@ Resources:
       CodeUri: src/cfn-custom-resources/user-pool-domain/
       Handler: index.handler
       Runtime: nodejs12.x
-      Role: !Ref UserPoolDomainLookupHandlerRole
+      Role: !GetAtt UserPoolDomainLookupHandlerRole.Arn
     DependsOn:
       - UserPoolDomainLookupHandlerRole
       - UserPoolDomainLookupHandlerPolicy
@@ -997,8 +1006,8 @@ Outputs:
     Description: The S3 Bucket where the SPA (React, Angular, Vue, ...) is uploaded to
     Condition: CreateCloudFrontDistribution
     Value: !Ref S3Bucket
-    #Export:
-      #Name: !Sub "${AWS::StackName}-S3Bucket"
+    Export:
+      Name: !Sub "${AWS::StackName}-S3Bucket"
   WebsiteUrl:
     Description: URL of the CloudFront distribution that serves your SPA from S3
     Condition: CreateCloudFrontDistribution

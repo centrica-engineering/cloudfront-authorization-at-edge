@@ -30,7 +30,7 @@ async function updateLambdaCode(
   console.log(
     `Adding configuration to Lambda function ${lambdaFunction}:\n${stringifiedConfig}`
   );
-  // Parse the JSON to ensure it's validity (and avoid ugly errors at runtime)
+  // Parse the JSON to ensure its validity (and avoid ugly errors at runtime)
   const config = JSON.parse(stringifiedConfig);
   // Fetch and extract Lambda zip contents to temporary folder, add configuration.json, and rezip
   const { Code } = await LAMBDA_CLIENT.getFunction({
