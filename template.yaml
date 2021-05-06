@@ -34,7 +34,7 @@ Metadata:
         "amplify",
       ]
     HomePageUrl: https://github.com/centrica-engineering
-    SemanticVersion: 2.0.5-alpha17
+    SemanticVersion: 2.0.5-alpha18
     SourceCodeUrl: https://github.com/centrica-engineering/cloudfront-authorization-at-edge
 
 Parameters:
@@ -102,6 +102,16 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
+  CloudfrontAliases:
+    Type: CommaDelimitedList
+    Description: aka cnames
+    Default: AWS::NoValue
+  CloudFrontDefaultCertificate:
+    Type: String
+    Default: "true"
+  AcmCertificateArn:
+      Type: String
+      Default: AWS::NoValue
   CookieCompatibility:
     Type: String
     Description: "Specify whether naming of cookies should be compatible with AWS Amplify (default) or Amazon Elasticsearch Service. In case of the latter, turn off SPA mode too: set parameter EnableSPAMode to false"
@@ -268,6 +278,11 @@ Resources:
     Condition: CreateCloudFrontDistribution
     Properties:
       DistributionConfig:
+        Aliases: !Ref CloudfrontAliases
+        CloudFrontDefaultCertificate: !Ref CloudFrontDefaultCertificate
+        AcmCertificateArn: !Ref AcmCertificateArn
+        SslSupportMethod: sni-only
+        MinimumProtocolVersion: TLSv1.2_2019
         CacheBehaviors:
           - PathPattern: !Ref RedirectPathSignIn
             Compress: true
